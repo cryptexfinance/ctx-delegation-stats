@@ -68,5 +68,15 @@ class Transfer(Base):
     transactionHash = Column(String(66))
 
 
+class DelegationRecord(Base):
+    __tablename__ = 'delegation_record'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    delegator = Column(String(66))
+    delegatee = Column(String(66))
+    balance = Column(Numeric(precision=60, scale=0))
+    blockNumber = Column(BigInteger)
+    transactionHash = Column(String(66))
+
+
 def create_db_models():
     Base.metadata.create_all(engine)
