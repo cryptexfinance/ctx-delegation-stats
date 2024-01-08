@@ -1,0 +1,141 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: DelegatorFactory
+    network: mainnet
+    source:
+      address: "0x70236b36f86AB4bd557Fe9934E1246537B472918"
+      abi: DelegatorFactory
+      startBlock: 13360297
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - DelegatorCreated
+        - OwnershipTransferred
+        - RewardAdded
+        - RewardPaid
+        - RewardsDurationUpdated
+        - Staked
+        - WaitTimeUpdated
+        - Withdrawn
+      abis:
+        - name: DelegatorFactory
+          file: ./abis/DelegatorFactory.json
+      eventHandlers:
+        - event: DelegatorCreated(indexed address,indexed address)
+          handler: handleDelegatorCreated
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: RewardAdded(uint256)
+          handler: handleRewardAdded
+        - event: RewardPaid(indexed address,uint256)
+          handler: handleRewardPaid
+        - event: RewardsDurationUpdated(uint256)
+          handler: handleRewardsDurationUpdated
+        - event: Staked(indexed address,indexed address,uint256)
+          handler: handleStaked
+        - event: WaitTimeUpdated(uint256)
+          handler: handleWaitTimeUpdated
+        - event: Withdrawn(indexed address,indexed address,uint256)
+          handler: handleWithdrawn
+      file: ./src/delegator-factory.ts
+  - kind: ethereum
+    name: Ctx
+    network: mainnet
+    source:
+      address: "0x321C2fE4446C7c963dc41Dd58879AF648838f98D"
+      abi: Ctx
+      startBlock: 12183937
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Approval
+        - DelegateChanged
+        - DelegateVotesChanged
+        - MinterChanged
+        - Transfer
+      abis:
+        - name: Ctx
+          file: ./abis/Ctx.json
+      eventHandlers:
+        - event: Approval(indexed address,indexed address,uint256)
+          handler: handleApproval
+        - event: DelegateChanged(indexed address,indexed address,indexed address)
+          handler: handleDelegateChanged
+        - event: DelegateVotesChanged(indexed address,uint256,uint256)
+          handler: handleDelegateVotesChanged
+        - event: MinterChanged(address,address)
+          handler: handleMinterChanged
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+      file: ./src/ctx.ts
+  - kind: ethereum
+    name: GovernorBeta
+    network: mainnet
+    source:
+      address: "0x874C5D592AfC6803c3DD60d6442357879F196d5b"
+      abi: GovernorBeta
+      startBlock: 12833920
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ProposalCanceled
+        - ProposalCreated
+        - ProposalExecuted
+        - ProposalQueued
+        - VoteCast
+      abis:
+        - name: GovernorBeta
+          file: ./abis/GovernorBeta.json
+      eventHandlers:
+        - event: ProposalCanceled(uint256)
+          handler: handleProposalCanceled
+        - event: ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)
+          handler: handleProposalCreated
+        - event: ProposalExecuted(uint256)
+          handler: handleProposalExecuted
+        - event: ProposalQueued(uint256,uint256)
+          handler: handleProposalQueued
+        - event: VoteCast(address,uint256,bool,uint256)
+          handler: handleVoteCast
+      file: ./src/governor-beta.ts
+  - kind: ethereum
+    name: GovernorAlpha
+    network: mainnet
+    source:
+      address: "0x271901c3268D0959bbc9543DE4f073D3708C88F7"
+      abi: GovernorAlpha
+      startBlock: 12184034
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - GovernorAlphaProposalCanceled
+        - GovernorAlphaProposalCreated
+        - GovernorAlphaProposalExecuted
+        - GovernorAlphaProposalQueued
+        - GovernorAlphaVoteCast
+      abis:
+        - name: GovernorAlpha
+          file: ./abis/GovernorAlpha.json
+      eventHandlers:
+        - event: ProposalCanceled(uint256)
+          handler: handleProposalCanceled
+        - event: ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)
+          handler: handleProposalCreated
+        - event: ProposalExecuted(uint256)
+          handler: handleProposalExecuted
+        - event: ProposalQueued(uint256,uint256)
+          handler: handleProposalQueued
+        - event: VoteCast(address,uint256,bool,uint256)
+          handler: handleVoteCast
+      file: ./src/governor-alpha.ts

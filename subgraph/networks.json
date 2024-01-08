@@ -1,0 +1,17 @@
+{
+  "mainnet": {
+    "DelegatorFactory": {
+      "address": "0x70236b36f86AB4bd557Fe9934E1246537B472918",
+      "startBlock": 13360297
+    },
+    "Ctx": {
+      "address": "0x321C2fE4446C7c963dc41Dd58879AF648838f98D"
+    },
+    "GovernorBeta": {
+      "address": "0x874C5D592AfC6803c3DD60d6442357879F196d5b"
+    },
+    "GovernorAlpha": {
+      "address": "0x271901c3268D0959bbc9543DE4f073D3708C88F7"
+    }
+  }
+}
