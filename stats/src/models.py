@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Numeric
+import enum
+
+from sqlalchemy import Column, Integer, BigInteger, String, Numeric, Enum
 
 from .database import Base, engine
 
@@ -68,11 +70,21 @@ class Transfer(Base):
     transactionHash = Column(String(66))
 
 
+class EventType(enum.Enum):
+    DIRECT_DELEGATION = 'DD'
+    STAKED = 'ST'
+    CTX_TRANSFER = 'CT'
+    WITHDRAWN = 'WD'
+
+
 class DelegationRecord(Base):
     __tablename__ = 'delegation_record'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # user
     delegator = Column(String(66))
+    # keeper
     delegatee = Column(String(66))
+    event_type = Column(Enum(EventType))
     balance = Column(Numeric(precision=60, scale=0))
     blockNumber = Column(BigInteger)
     transactionHash = Column(String(66))
