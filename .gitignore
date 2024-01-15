@@ -113,3 +113,5 @@ pip-wheel-metadata/
 *.env
 
 */node_modules
+
+*.xlsx
