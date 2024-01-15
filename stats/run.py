@@ -24,21 +24,13 @@ def fetch_and_store_data():
 
 
 @main.command()
-def build_delegation_records():
+def generate_distribution():
     click.echo("Building delegation records...")
     BuildAccountDelegation().build()
     click.echo("delegation records built")
-
-
-@main.command()
-def build_vote_stats():
     click.echo("Building vote stats...")
     VoteStatBuilder().build()
     click.echo("Built vote stats")
-
-
-@main.command()
-def generate_distribution():
     click.echo("Generating distribution...")
     GenerateDistribution().generate()
     click.echo("generated distribution")

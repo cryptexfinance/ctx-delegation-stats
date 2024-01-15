@@ -10,7 +10,7 @@ from .utils import identity
 
 QUERY = """
 {{
-  {table_key} ( first: {first}, orderBy: {page_key} , where: {{ {page_key}_gt: "{page_value}" }} ) {{
+  {table_key} ( first: {first}, orderBy: {page_key} , where: {{ {page_key}_gte: "{page_value}" }} ) {{
     {fields}
   }}
 }}

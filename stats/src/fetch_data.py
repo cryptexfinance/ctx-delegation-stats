@@ -28,6 +28,7 @@ def fetch_and_write_delegator_created():
         ["id", "delegator", "delegatee", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -46,6 +47,7 @@ def fetch_and_write_delegator_changed():
         ["id", "delegator", "fromDelegate", "toDelegate", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -65,6 +67,7 @@ def fetch_and_write_delegate_votes_changed():
         ["id", "delegate", "previousBalance", "newBalance", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -84,6 +87,7 @@ def fetch_and_write_staked():
         ["id", "delegator", "delegatee", "amount", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -104,6 +108,7 @@ def fetch_and_write_transfer():
         "blockNumber",
         block_number,
         rename_fields={"from": "from_"},
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -123,6 +128,7 @@ def fetch_and_write_withdrawn():
         ["id", "delegator", "delegatee", "amount", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 
@@ -142,6 +148,7 @@ def fetch_and_write_vote_cast():
         ["id", "voter", "proposalId", "support", "votes", "blockNumber", "blockTimestamp", "transactionHash"],
         "blockNumber",
         block_number,
+        ignore_if_exists=["id"],
     ).fetch_and_write_to_db()
 
 

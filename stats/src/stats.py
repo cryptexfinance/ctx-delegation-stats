@@ -3,6 +3,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
+import pandas as pd
+from eth_utils.address import to_checksum_address
+from eth_utils.currency import from_wei
 from sqlalchemy import and_, func
 
 from .database import Session
@@ -354,9 +357,6 @@ class BuildAccountDelegation:
                 for _delegate_votes_changed in delegations:
                     if self.check_if_team_multisig(_delegate_votes_changed.delegate):
                         continue
-                    # if amounts.count(_delegate_votes_changed.newBalance - _delegate_votes_changed.previousBalance) > 1:
-                    #     import pdb; pdb.set_trace()
-                    #     """"""
                     for _transfer in data.transfer:
                         # 0x67e594578941b0bc7e2d1e654d554ac672a307667adcacc11137c5a2067453ce
                         # 0x04cb7a6842b3398a0a964df8854f04a8de3309940a97735f1392dd3edd3a8e21
@@ -638,6 +638,11 @@ class VoteStatBuilder:
 TOTAL_REWARD = 50_000
 KEEPER_SPLIT = 0.2
 USER_SPLIT = 1 - KEEPER_SPLIT
+excel_file_path = 'distribution_data.xlsx'
+
+
+def convert_from_wei(amount):
+    return from_wei(amount, 'ether')
 
 
 class GenerateDistribution:
@@ -649,9 +654,26 @@ class GenerateDistribution:
             keeper_vote_cast_data = self.fetch_keeper_vote_cast_data(session)
             self.fill_keeper_balances(keeper_vote_cast_data)
             self.fill_user_balances(session, keeper_vote_cast_data)
-        print(sum(value for _, value in self.balances.items()))
-        for key, value in sorted(self.balances.items(), key=lambda i: -i[1]):
-            print(key, value)
+            df1 = pd.DataFrame(list(sorted(self.balances.items(), key=lambda x: -x[1])), columns=['address', 'reward'])
+            df2 = pd.read_sql_table(
+                VoteStat.__tablename__, session.bind
+            ).drop(columns=['id']
+                   ).rename(columns={'no_of_days': 'number of days staked', 'balance': 'delegated_amount'})
+            df3 = pd.read_sql_table(DelegationRecord.__tablename__, session.bind).drop(
+                columns=['id', 'event_type']).rename(columns={'balance': 'delegated_amount'})
+
+        df1['address'] = df1['address'].apply(to_checksum_address)
+        df2['delegator'] = df2['delegator'].apply(to_checksum_address)
+        df2['delegatee'] = df2['delegatee'].apply(to_checksum_address)
+        df2['delegated_amount'] = df2['delegated_amount'].apply(convert_from_wei)
+        df3['delegator'] = df3['delegator'].apply(to_checksum_address)
+        df3['delegatee'] = df3['delegatee'].apply(to_checksum_address)
+        df3['delegated_amount'] = df3['delegated_amount'].apply(convert_from_wei)
+
+        with pd.ExcelWriter(excel_file_path, engine='xlsxwriter') as writer:
+            df1.to_excel(writer, sheet_name='Distribution', index=False)
+            df2.to_excel(writer, sheet_name='Voting Stats', index=False)
+            df3.to_excel(writer, sheet_name='Delegation Data', index=False)
 
     def fill_user_balances(self, session, keeper_vote_cast_data):
         total_weight_for_distribution = sum(2 ** obj[1] for obj in keeper_vote_cast_data)
