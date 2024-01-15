@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Column, Integer, BigInteger, String, Numeric, Enum
+from sqlalchemy import Column, Integer, BigInteger, String, Numeric, Enum, Boolean
 
 from .database import Base, engine
 
@@ -70,6 +70,31 @@ class Transfer(Base):
     transactionHash = Column(String(66))
 
 
+class VoteCast(Base):
+    __tablename__ = 'vote_cast'
+    id = Column(String(100), unique=True, primary_key=True)
+    voter = Column(String(66))
+    proposalId = Column(Integer)
+    support = Column(Boolean)
+    votes = Column(Numeric(precision=60, scale=0))
+    blockNumber = Column(BigInteger)
+    blockTimestamp = Column(Integer)
+    transactionHash = Column(String(66))
+
+
+class ProposalCreated(Base):
+    __tablename__ = 'proposal_created'
+    id = Column(String(100), unique=True, primary_key=True)
+    GovernorBeta_id = Column(BigInteger)
+    proposer = Column(String(66))
+    startBlock = Column(BigInteger)
+    endBlock = Column(BigInteger)
+    description =  Column(String(1000))
+    blockNumber = Column(BigInteger)
+    blockTimestamp = Column(Integer)
+    transactionHash = Column(String(66))
+
+
 class EventType(enum.Enum):
     DIRECT_DELEGATION = 'DD'
     STAKED = 'ST'
@@ -87,7 +112,20 @@ class DelegationRecord(Base):
     event_type = Column(Enum(EventType))
     balance = Column(Numeric(precision=60, scale=0))
     blockNumber = Column(BigInteger)
+    blockTimestamp = Column(Integer)
     transactionHash = Column(String(66))
+
+
+class VoteStat(Base):
+    __tablename__ = 'vote_stat'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # user
+    delegator = Column(String(66))
+    # keeper
+    delegatee = Column(String(66))
+    proposalId = Column(Integer)
+    balance = Column(Numeric(precision=60, scale=0))
+    no_of_days = Column(Integer)
 
 
 def create_db_models():

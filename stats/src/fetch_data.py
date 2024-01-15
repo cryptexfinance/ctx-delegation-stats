@@ -8,7 +8,8 @@ from .models import (
     DelegateVotesChanged,
     Staked,
     Transfer,
-    Withdrawn
+    VoteCast,
+    Withdrawn,
 )
 
 
@@ -125,10 +126,30 @@ def fetch_and_write_withdrawn():
     ).fetch_and_write_to_db()
 
 
+def fetch_and_write_vote_cast():
+    with Session() as session:
+        last_vote_cast = session.query(
+            VoteCast).order_by(desc(VoteCast.blockNumber)).first()
+
+    if last_vote_cast:
+        block_number = last_vote_cast.blockNumber
+    else:
+        block_number = 0
+
+    DataCruncher(
+        VoteCast,
+        "voteCasts",
+        ["id", "voter", "proposalId", "support", "votes", "blockNumber", "blockTimestamp", "transactionHash"],
+        "blockNumber",
+        block_number,
+    ).fetch_and_write_to_db()
+
+
 def fetch_all_data():
     fetch_and_write_delegator_created()
     fetch_and_write_delegator_changed()
     fetch_and_write_delegate_votes_changed()
     fetch_and_write_staked()
     fetch_and_write_transfer()
+    fetch_and_write_vote_cast()
     fetch_and_write_withdrawn()

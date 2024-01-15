@@ -1,7 +1,9 @@
+import datetime
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from .database import Session
 from .models import (
@@ -11,7 +13,9 @@ from .models import (
     Transfer,
     Withdrawn,
     DelegationRecord,
-    EventType
+    EventType,
+    VoteCast,
+    VoteStat,
 )
 
 
@@ -88,15 +92,29 @@ WITHDRAWN_CHECK = [
 CRYPTEX_TEAM_MULTISIG_ADDRESS = '0xa70b638b70154edfcbb8dbbbd04900f328f32c35'
 
 
+def convert_epoch_to_datetime(timestamp: int) -> datetime.datetime:
+    return datetime.datetime.fromtimestamp(timestamp)
+
+
+def no_of_days(timestamp1: datetime.datetime, timestamp2: datetime.datetime) -> int:
+    return (timestamp2 - timestamp1).days
+
+
+START_BLOCK = 13360297
+START_DATETIME = convert_epoch_to_datetime(1633453569)
+
+
 class BuildAccountDelegation:
 
-    def generate_stats(self):
+    def build(self):
         with Session() as session:
             subquery = session.query(
-                DelegateVotesChanged.blockNumber, DelegateVotesChanged.transactionHash
+                DelegateVotesChanged.blockNumber,
+                DelegateVotesChanged.transactionHash,
+                DelegateVotesChanged.blockTimestamp,
             ).distinct(DelegateVotesChanged.transactionHash).subquery()
             for delegate_vote_changed in session.query(
-                    subquery.c.transactionHash, subquery.c.blockNumber
+                    subquery.c.transactionHash, subquery.c.blockNumber, subquery.c.blockTimestamp
             ).order_by(subquery.c.blockNumber).all():
                 event_type, data = self.classify_event_type(
                     session,
@@ -106,11 +124,12 @@ class BuildAccountDelegation:
                     session,
                     delegate_vote_changed.transactionHash,
                     delegate_vote_changed.blockNumber,
+                    delegate_vote_changed.blockTimestamp,
                     event_type,
                     data
                 )
 
-    def write_record(self, session, tx_hash, block_number, event_type, data):
+    def write_record(self, session, tx_hash, block_number, block_timestamp, event_type, data):
         if event_type == EventType.DIRECT_DELEGATION:
             if len(data.delegate_changed) == 1 and len(data.delegate_votes_changed) == 1:
                 # 0x9c7118eb0c347a84f1411060c580ee1fe354de4bc82f885ffea7e53970c5bf27
@@ -122,13 +141,16 @@ class BuildAccountDelegation:
                 record = DelegationRecord(
                     delegator=data.delegate_changed[0].delegator,
                     delegatee=data.delegate_changed[0].toDelegate,
-                    balance=latest_balance + data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance,
+                    balance=latest_balance + data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[
+                        0].previousBalance,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record)
-            elif len(data.delegate_changed) == 1 and len(data.delegate_votes_changed) == 2 and data.delegate_votes_changed[0].newBalance == 0:
+            elif len(data.delegate_changed) == 1 and len(data.delegate_votes_changed) == 2 and \
+                    data.delegate_votes_changed[0].newBalance == 0:
                 # delegator changed; old delegator balance becomes 0, new one gets 1st event previousBalance.
                 # Also for the 2nd event newBalance - oldBalance = previousBalance of 1st event
                 # 0x0dc8bca57fbf2d4c283a1130e29d51c927a7cb93c0dcc297b157ea4936fe0fd3
@@ -140,9 +162,11 @@ class BuildAccountDelegation:
                 record1 = DelegationRecord(
                     delegator=data.delegate_changed[0].delegator,
                     delegatee=data.delegate_changed[0].fromDelegate,
-                    balance=latest_balance2 + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance),
+                    balance=latest_balance2 + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[
+                        0].previousBalance),
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 latest_balance2 = self.get_latest_balance(
@@ -153,9 +177,11 @@ class BuildAccountDelegation:
                 record2 = DelegationRecord(
                     delegator=data.delegate_changed[0].delegator,
                     delegatee=data.delegate_changed[0].toDelegate,
-                    balance=latest_balance2 + (data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance),
+                    balance=latest_balance2 + (data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[
+                        1].previousBalance),
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record1)
@@ -176,6 +202,7 @@ class BuildAccountDelegation:
                     balance=latest_balance + data.staked[0].amount,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record)
@@ -183,9 +210,9 @@ class BuildAccountDelegation:
                     len(data.staked) == 1 and
                     len(data.delegate_votes_changed) == 2 and
                     (
-                        data.delegate_votes_changed[0].previousBalance - data.delegate_votes_changed[0].newBalance
+                            data.delegate_votes_changed[0].previousBalance - data.delegate_votes_changed[0].newBalance
                     ) == (
-                        data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance
+                            data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance
                     )
             ):
                 # 0x0e12001d49195017c6090c5f3ea874e4dabfaa93f8f5081ebc1f5b2a69ff9f2f
@@ -196,6 +223,7 @@ class BuildAccountDelegation:
                     balance=data.delegate_votes_changed[0].newBalance,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 # make sure its committed as this might affect the latest balance
@@ -213,6 +241,7 @@ class BuildAccountDelegation:
                     balance=latest_balance + data.staked[0].amount,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record2)
@@ -240,6 +269,7 @@ class BuildAccountDelegation:
                         balance=transfer_from - data.transfer[0].amount,
                         event_type=event_type,
                         blockNumber=block_number,
+                        blockTimestamp=block_timestamp,
                         transactionHash=tx_hash
                     )
                 else:
@@ -250,6 +280,7 @@ class BuildAccountDelegation:
                         balance=transfer_to + data.transfer[0].amount,
                         event_type=event_type,
                         blockNumber=block_number,
+                        blockTimestamp=block_timestamp,
                         transactionHash=tx_hash
                     )
                 session.add(record)
@@ -257,7 +288,8 @@ class BuildAccountDelegation:
                     len(data.transfer) > 1 and
                     len(data.delegate_votes_changed) == 1 and
                     data.transfer[-2].to == data.transfer[-1].from_ and
-                    data.transfer[-1].amount == (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance)
+                    data.transfer[-1].amount == (
+                            data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance)
             ):
                 # exchange buy ctx
                 # 0xd35185f3135f135390874086b095d137d3152f86fbff26b70f4754ff15abf289
@@ -279,6 +311,7 @@ class BuildAccountDelegation:
                     balance=latest_balance + data.transfer[-1].amount,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record)
@@ -286,7 +319,8 @@ class BuildAccountDelegation:
                     len(data.transfer) > 1 and
                     len(data.delegate_votes_changed) == 1 and
                     data.transfer[0].to == data.transfer[1].from_ and
-                    data.transfer[0].amount == (data.delegate_votes_changed[0].previousBalance - data.delegate_votes_changed[0].newBalance)
+                    data.transfer[0].amount == (
+                            data.delegate_votes_changed[0].previousBalance - data.delegate_votes_changed[0].newBalance)
             ):
                 # exchange sell
                 # 0x300666908ec0581ef83e5f535734e6714aff5e46eb908511be773fd3466b310b
@@ -302,6 +336,7 @@ class BuildAccountDelegation:
                     balance=latest_balance - data.transfer[0].amount,
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record)
@@ -313,7 +348,8 @@ class BuildAccountDelegation:
                 pass
             elif any([self.check_if_team_multisig(obj.delegate) for obj in data.delegate_votes_changed]):
                 # cryptex team multisig distribution
-                delegations = [obj for obj in data.delegate_votes_changed if not self.check_if_team_multisig(obj.delegate)]
+                delegations = [obj for obj in data.delegate_votes_changed if
+                               not self.check_if_team_multisig(obj.delegate)]
                 amounts = [obj.amount for obj in data.transfer]
                 for _delegate_votes_changed in delegations:
                     if self.check_if_team_multisig(_delegate_votes_changed.delegate):
@@ -326,7 +362,8 @@ class BuildAccountDelegation:
                         # 0x04cb7a6842b3398a0a964df8854f04a8de3309940a97735f1392dd3edd3a8e21
                         if (
                                 _transfer.to == _delegate_votes_changed.delegate and
-                                _delegate_votes_changed.delegate == '0xb8c30017b375bf675c2836c4c6b6ed5be214739d'  # ugly but only special case
+                                _delegate_votes_changed.delegate == '0xb8c30017b375bf675c2836c4c6b6ed5be214739d'
+                        # ugly but only special case
                         ):
                             latest_balance = self.get_latest_balance(
                                 session,
@@ -339,6 +376,7 @@ class BuildAccountDelegation:
                                 balance=latest_balance + _transfer.amount,
                                 event_type=event_type,
                                 blockNumber=block_number,
+                                blockTimestamp=block_timestamp,
                                 transactionHash=tx_hash
                             )
                             session.add(record)
@@ -349,7 +387,7 @@ class BuildAccountDelegation:
                             # 0x3c3d5c4250aea782d9666c5a99fcbaeb4889294bd26f5f90c7befc093ed96955
                             if ((
                                     _delegate_votes_changed.newBalance - _delegate_votes_changed.previousBalance
-                                ) == _transfer.amount
+                            ) == _transfer.amount
                             ):
                                 latest_balance = self.get_latest_balance(
                                     session,
@@ -362,6 +400,7 @@ class BuildAccountDelegation:
                                     balance=latest_balance + _transfer.amount,
                                     event_type=event_type,
                                     blockNumber=block_number,
+                                    blockTimestamp=block_timestamp,
                                     transactionHash=tx_hash
                                 )
                                 session.add(record)
@@ -382,9 +421,11 @@ class BuildAccountDelegation:
                 record = DelegationRecord(
                     delegator=data.withdrawn[0].delegatee,
                     delegatee=data.delegate_votes_changed[0].delegate,
-                    balance=latest_balance + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance),
+                    balance=latest_balance + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[
+                        0].previousBalance),
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record)
@@ -392,9 +433,9 @@ class BuildAccountDelegation:
                     len(data.withdrawn) == 1 and
                     len(data.delegate_votes_changed) == 2 and
                     (
-                        data.delegate_votes_changed[0].previousBalance -  data.delegate_votes_changed[0].newBalance
+                            data.delegate_votes_changed[0].previousBalance - data.delegate_votes_changed[0].newBalance
                     ) == (
-                        data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance
+                            data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance
                     )
             ):
                 # 0xe95e3675994188e944ecda0ec3865bb4a9b8326f9ec2acfac19d6bdf87c6c4fd
@@ -406,9 +447,11 @@ class BuildAccountDelegation:
                 record1 = DelegationRecord(
                     delegator=data.transfer[0].to,
                     delegatee=data.delegate_votes_changed[0].delegate,
-                    balance=latest_balance1 + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[0].previousBalance),
+                    balance=latest_balance1 + (data.delegate_votes_changed[0].newBalance - data.delegate_votes_changed[
+                        0].previousBalance),
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record1)
@@ -421,9 +464,11 @@ class BuildAccountDelegation:
                 record2 = DelegationRecord(
                     delegator=data.withdrawn[0].delegatee,
                     delegatee=data.delegate_votes_changed[1].delegate,
-                    balance=latest_balance2 + (data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[1].previousBalance),
+                    balance=latest_balance2 + (data.delegate_votes_changed[1].newBalance - data.delegate_votes_changed[
+                        1].previousBalance),
                     event_type=event_type,
                     blockNumber=block_number,
+                    blockTimestamp=block_timestamp,
                     transactionHash=tx_hash
                 )
                 session.add(record2)
@@ -477,10 +522,11 @@ class BuildAccountDelegation:
         data = [delegate_changed, delegate_votes_changed, staked, transfer, withdrawn]
         data_exists_list = [bool(obj) for obj in data]
         # any([len(obj) > 1 for obj in [delegate_changed, staked, transfer, withdrawn]]) or
-        if len(delegate_votes_changed) > 2 and not delegate_votes_changed[0].delegate == '0xa70b638b70154edfcbb8dbbbd04900f328f32c35':
+        if len(delegate_votes_changed) > 2 and not delegate_votes_changed[
+                                                       0].delegate == '0xa70b638b70154edfcbb8dbbbd04900f328f32c35':
             raise Exception("length > 1 case. Please check the code")
 
-        if data_exists_list == CTX_DELEGATION_CHECK :
+        if data_exists_list == CTX_DELEGATION_CHECK:
             return EventType.DIRECT_DELEGATION, event_data
         elif data_exists_list == STAKED_CHECK:
             return EventType.STAKED, event_data
@@ -490,3 +536,146 @@ class BuildAccountDelegation:
             return EventType.WITHDRAWN, event_data
         else:
             raise Exception('Unknown type')
+
+
+def get_keeper_votes_on_proposals():
+    with Session() as session:
+        return session.query(VoteCast.voter, func.count(VoteCast.voter)).group_by(VoteCast.voter).order_by(
+            func.count(VoteCast.voter).desc()).all()
+
+
+class VoteStatBuilder:
+
+    def build(self):
+        with Session() as session:
+            for delegator, delegatee in self.fetch_delegator_delegatee_pair(session):
+                for proposal_id, in self.fetch_all_proposals_id(session):
+                    vote_cast = self.fetch_delegate_voted_on_proposal(session, proposal_id, delegatee)
+                    if not vote_cast:
+                        continue
+                    else:
+                        self.check_days_staked_and_create_record(session, proposal_id, delegator, delegatee, vote_cast)
+            session.commit()
+
+    def check_days_staked_and_create_record(self, session, proposal_id, delegator, delegatee, vote_cast):
+        no_of_days_staked, balance = self.calculate_no_days_staked_before_vote(session, delegator, delegatee, vote_cast)
+        if no_of_days_staked:
+            vote_stat = VoteStat(
+                delegator=delegator,
+                delegatee=delegatee,
+                proposalId=proposal_id,
+                balance=balance,
+                no_of_days=no_of_days_staked,
+            )
+            session.add(vote_stat)
+
+    @staticmethod
+    def fetch_delegate_voted_on_proposal(session, proposal_id, delegatee):
+        return session.query(VoteCast).filter(
+            and_(VoteCast.proposalId == proposal_id, VoteCast.voter == delegatee)
+        ).first()
+
+    @staticmethod
+    def fetch_delegator_delegatee_pair(session):
+        return session.query(
+            DelegationRecord.delegator, DelegationRecord.delegatee).group_by(
+            DelegationRecord.delegator, DelegationRecord.delegatee
+        ).all()
+
+    @staticmethod
+    def fetch_all_proposals_id(session):
+        return session.query(VoteCast.proposalId).distinct().order_by(VoteCast.proposalId).all()
+
+    @staticmethod
+    def calculate_no_days_staked_before_vote(session, delegator, delegatee, vote_cast):
+        latest_zero_balance = session.query(DelegationRecord).filter(
+            and_(DelegationRecord.delegator == delegator,
+                 DelegationRecord.delegatee == delegatee,
+                 DelegationRecord.balance == 0,
+                 DelegationRecord.blockNumber >= START_BLOCK,
+                 DelegationRecord.blockNumber < vote_cast.blockNumber)
+        ).order_by(DelegationRecord.blockNumber.desc()).first()
+        if latest_zero_balance:
+            nearest_non_zero_entry = session.query(DelegationRecord).filter(
+                and_(DelegationRecord.delegator == delegator,
+                     DelegationRecord.delegatee == delegatee,
+                     DelegationRecord.blockNumber > latest_zero_balance.blockNumber,
+                     DelegationRecord.blockNumber < vote_cast.blockNumber)
+            ).order_by(DelegationRecord.blockNumber).first()
+            if nearest_non_zero_entry:
+                latest_non_zero_entry = session.query(DelegationRecord).filter(
+                    and_(DelegationRecord.delegator == delegator,
+                         DelegationRecord.delegatee == delegatee,
+                         DelegationRecord.balance > 0,
+                         DelegationRecord.blockNumber < vote_cast.blockNumber)
+                ).order_by(DelegationRecord.blockNumber.desc()).first()
+                start_date = max(START_DATETIME, convert_epoch_to_datetime(nearest_non_zero_entry.blockTimestamp))
+                return no_of_days(start_date,
+                                  convert_epoch_to_datetime(vote_cast.blockTimestamp)), latest_non_zero_entry.balance
+            else:
+                return 0, 0
+        else:
+            nearest_non_zero_entry = session.query(DelegationRecord).filter(
+                and_(DelegationRecord.delegator == delegator,
+                     DelegationRecord.delegatee == delegatee,
+                     DelegationRecord.blockNumber > START_BLOCK,
+                     DelegationRecord.blockNumber < vote_cast.blockNumber)
+            ).order_by(DelegationRecord.blockNumber).first()
+            if nearest_non_zero_entry:
+                latest_non_zero_entry = session.query(DelegationRecord).filter(
+                    and_(DelegationRecord.delegator == delegator,
+                         DelegationRecord.delegatee == delegatee,
+                         DelegationRecord.balance > 0,
+                         DelegationRecord.blockNumber < vote_cast.blockNumber)
+                ).order_by(DelegationRecord.blockNumber.desc()).first()
+                start_date = max(START_DATETIME, convert_epoch_to_datetime(nearest_non_zero_entry.blockTimestamp))
+                return no_of_days(start_date,
+                                  convert_epoch_to_datetime(vote_cast.blockTimestamp)), latest_non_zero_entry.balance
+            else:
+                return 0, 0
+
+
+TOTAL_REWARD = 50_000
+KEEPER_SPLIT = 0.2
+USER_SPLIT = 1 - KEEPER_SPLIT
+
+
+class GenerateDistribution:
+    def __init__(self):
+        self.balances = defaultdict(int)
+
+    def generate(self):
+        with Session() as session:
+            keeper_vote_cast_data = self.fetch_keeper_vote_cast_data(session)
+            self.fill_keeper_balances(keeper_vote_cast_data)
+            self.fill_user_balances(session, keeper_vote_cast_data)
+        print(sum(value for _, value in self.balances.items()))
+        for key, value in sorted(self.balances.items(), key=lambda i: -i[1]):
+            print(key, value)
+
+    def fill_user_balances(self, session, keeper_vote_cast_data):
+        total_weight_for_distribution = sum(2 ** obj[1] for obj in keeper_vote_cast_data)
+        for keeper, no_proposals in keeper_vote_cast_data:
+            keeper_delgators_reward = (2 ** no_proposals) * USER_SPLIT * TOTAL_REWARD / total_weight_for_distribution
+            keeper_delegators_reward_per_proposal = keeper_delgators_reward / no_proposals
+            for proposal_id, in session.query(VoteCast.proposalId).filter(VoteCast.voter == keeper):
+                proposal_delegators = session.query(
+                    VoteStat.delegator, VoteStat.balance, VoteStat.no_of_days
+                ).filter(and_(VoteStat.delegatee == keeper, VoteStat.proposalId == proposal_id)).all()
+                proposal_keeper_total_weight = sum(obj[1] * obj[2] for obj in proposal_delegators)
+                for delegator, balance, no_of_days in proposal_delegators:
+                    self.balances[delegator] += (
+                        int(balance) * no_of_days * keeper_delegators_reward_per_proposal
+                    ) / int(proposal_keeper_total_weight)
+
+    def fill_keeper_balances(self, keeper_vote_cast_data):
+        total_keeper_reward = KEEPER_SPLIT * TOTAL_REWARD
+        total_weight = sum(2 ** obj[1]  for obj in keeper_vote_cast_data)
+        for voter, no_of_proposals in keeper_vote_cast_data:
+            self.balances[voter] += ((2 ** no_of_proposals) * total_keeper_reward) / total_weight
+
+    @staticmethod
+    def fetch_keeper_vote_cast_data(session):
+        return session.query(
+            VoteCast.voter, func.count(VoteCast.voter)
+        ).group_by(VoteCast.voter).order_by(func.count(VoteCast.voter).desc()).all()
