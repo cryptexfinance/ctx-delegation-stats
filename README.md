@@ -67,6 +67,8 @@ We will allocate 20% of the rewards i.e. `0.2R` to the keepers as rewards and 80
 
 Note: The numbers above can be changed based on feedback. Those are tentative numbers.
 
+The formula for the distribution is explained using an example. 
+
 Let’s say that `K1` voted on `n1` proposals and `k2` voted on `n2` proposals.
 
 The reward for `K1 = (2 ** n1 * 0.2R)/(2 ** n1 + 2 ** n2)`
@@ -75,28 +77,59 @@ An exponential function is chosen here to reward active keepers more than non-ac
 
 Similarly reward for `K2 = (2 ** n2 * 0.2R)/(2 ** n1 + 2 ** n2)`
 
-User rewards distribution
+To understand the user distribution, let’s an example.
+
+Let's the user balance was as shown in the table at the time when each proposal was voted on.
+
+| User | Delegated to | 	No of days | Amount staked | ProposalId |
+|------|--------------|--------------|---------------|------------|
+| U1	  | K1           | 	d1         | 	a1          | 1          |
+| U1	  | K1           | 	d2         | 	a2          | 2          |
+| U2	  | K1           | 	d3         | 	a3          | 1          |
+| U2	  | K2           | 	d4         | 	a4          | 1          |
+| U3	  | K3           | 	d5         | 	a5          | 2          |
 
 
-|User|	Delegated to|	No of days|	Amount staked|
-| -------- | ------- | ------- | ------- |
-|U1	|K1|	d1|	a1|
-|U2	|K1|	d2|	a2|
-|U3	|K2|	d3|	a3|
-|U4	|K3|	d4|	a4|
-|U4	|K4|	d5|	a5|
-Let’s say the users have the following distribution:
+Also, let's say the table for the keeper votes looks as follows:
 
-Firstly the reward pool for each keeper will be split based on the keeper’s participation.
+| Keeper | proposalId |
+|--------|------------|
+| k1     | 1          |
+| k1     | 2          |
+| K2     | 1          |
+| k3     | 2          |
 
-user reward pool for `K1(UrK1) = (2 ** n1 * 0.8R) / (2 ** n1 + 2 ** n2)`
-user reward pool for `K2(UrK2) = (2 ** n2 * 0.8R )/ (2 ** n1 + 2 ** n2)`
 
-Reward for `U1 = (d1 * a1 * UrK1) / (d1 * a1 + d2 * a2)`
-Reward for `U2 = (d2 * a2 * UrK1) / (d1 * a1 + d2 * a2)`
+We can see that K1 voted on 2 proposals, K2 voted n 1, K3 voted on 1 and K4 didn't vote on any proposals.
 
-Reward for `U3 = (d3 * a3 * UrK2) / (d3 * a3 + d4 * a4 + d5 * a5)`
-Reward for `U4 = (d4 * a4 * UrK2) / (d3 * a3 + d4 * a4 + d5 * a5)`
-Reward for `U5 = (d5 * a5 * UrK2) / (d3 * a3 + d4 * a4 + d5 * a5)`
+We first need to calculate rewards for each of keepers delegators. 
+The reward pool for each keeper will be calculated as
+User reward pool for K1 `UrK1 = (2 **2 * 0.8R)/(2**2 + 2**1 + 2**1)`
+User reward pool for K2 `UrK2 = (2 **1 * 0.8R)/(2**2 + 2**1 + 2**1)`
+User reward pool for K3 `UrK3 = (2 **1 * 0.8R)/(2**2 + 2**1 + 2**1)`
+User reward pool for K4 `UrK4 = 0`
 
-Based on this formula we will grab the information of stakers and will create a document with the details on how much CTX will be allocated per staker/delegator for the community to approve.
+We further divide the keeper rewards for each proposal based on the number of proposals the keeper voted on
+K1 User reward pool for proposalId 1 `UrK1P1 = UrK1 / 2`
+K1 User reward pool for proposalId 2 `UrK1P2 = UrK1 / 2`
+K2 User reward pool for proposalId 1 `UrK2P1 = UrK2`
+K2 User reward pool for proposalId 2 `UrK2P2 = 0`
+K3 User reward pool for proposalId 1 `UrK3P1 = 0`
+K3 User reward pool for proposalId 2 `UrK3P2 = UrK3`
+K4 User reward pool for proposalId 1 `UrK4P1 = 0`
+K4 User reward pool for proposalId 2 `UrK4P2 = 0`
+
+Reward for U1 for proposal 1  for delegating to keeper 1:`U1K1P1 = (d1 * a1 * UrK1P1) / (d1 * a1 + d3 * a3)`
+Reward for U2 for proposal 1  for delegating to keeper 1: `U2K1P1 = (d3 * a3 * UrK1P1) / (d1 * a1 + d3 * a3)`
+Reward for U2 for proposal 1  for delegating to keeper 2: `U2K2P1 = (d3 * a3 * UrK2P1) / (d1 * a1 + d3 * a3)`
+Reward for U3 for proposal 1  for delegating to keeper 3: `U3K3P1 = 0`
+
+Please note that U2 has been rewarded twice becasue they had delegated to 2 keepers during proposal 1 
+
+Reward for U1 for proposal 2  for delegating to keeper 1 `U1K1P2 = (d1 * a1 * UrK1P2) / (d1 * a1)`
+Reward for U3 for proposal 2  for delegating to keeper 3 `U3K3P2 = (d5 * a5 * UrK3P2) / (d1 * a1)`
+
+
+Total reward for U1 `TU1 = U1K1P1 + U1K1P2`
+Total reward for U2 `TU2 = U2K1P1 + U2K2P1`
+Total reward for U3 `TU2 = U3K3P2`

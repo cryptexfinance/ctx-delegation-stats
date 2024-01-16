@@ -661,6 +661,7 @@ class GenerateDistribution:
                    ).rename(columns={'no_of_days': 'number of days staked', 'balance': 'delegated_amount'})
             df3 = pd.read_sql_table(DelegationRecord.__tablename__, session.bind).drop(
                 columns=['id', 'event_type']).rename(columns={'balance': 'delegated_amount'})
+            df4 = pd.DataFrame(keeper_vote_cast_data, columns=['Keeper', 'No of Proposals voted on'])
 
         df1['address'] = df1['address'].apply(to_checksum_address)
         df2['delegator'] = df2['delegator'].apply(to_checksum_address)
@@ -674,6 +675,7 @@ class GenerateDistribution:
             df1.to_excel(writer, sheet_name='Distribution', index=False)
             df2.to_excel(writer, sheet_name='Voting Stats', index=False)
             df3.to_excel(writer, sheet_name='Delegation Data', index=False)
+            df4.to_excel(writer, sheet_name='Keeper Votes', index=False)
 
     def fill_user_balances(self, session, keeper_vote_cast_data):
         total_weight_for_distribution = sum(2 ** obj[1] for obj in keeper_vote_cast_data)
