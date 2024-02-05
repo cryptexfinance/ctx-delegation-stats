@@ -105,7 +105,7 @@ def no_of_days(timestamp1: datetime.datetime, timestamp2: datetime.datetime) -> 
 
 START_BLOCK = 13360297
 START_DATETIME = convert_epoch_to_datetime(1633453569)
-
+END_BLOCK_TIMESTAMP = 1703980800
 
 class BuildAccountDelegation:
 
@@ -584,7 +584,7 @@ class VoteStatBuilder:
 
     @staticmethod
     def fetch_all_proposals_id(session):
-        return session.query(VoteCast.proposalId).distinct().order_by(VoteCast.proposalId).all()
+        return session.query(VoteCast.proposalId).filter(VoteCast.voter != CRYPTEX_TEAM_MULTISIG_ADDRESS).distinct().order_by(VoteCast.proposalId).all()
 
     @staticmethod
     def calculate_no_days_staked_before_vote(session, delegator, delegatee, vote_cast):
@@ -677,29 +677,35 @@ class GenerateDistribution:
             df3.to_excel(writer, sheet_name='Delegation Data', index=False)
             df4.to_excel(writer, sheet_name='Keeper Votes', index=False)
 
+        df1['reward'] = df1['reward'].apply(int)
+        df1.to_json('distribution.json', orient='records', lines=True)
+
     def fill_user_balances(self, session, keeper_vote_cast_data):
-        total_weight_for_distribution = sum(2 ** obj[1] for obj in keeper_vote_cast_data)
+        total_weight_for_distribution = sum(obj[1] for obj in keeper_vote_cast_data)
         for keeper, no_proposals in keeper_vote_cast_data:
-            keeper_delgators_reward = (2 ** no_proposals) * USER_SPLIT * TOTAL_REWARD / total_weight_for_distribution
-            keeper_delegators_reward_per_proposal = keeper_delgators_reward / no_proposals
+            # keeper_delgators_reward = (no_proposals * USER_SPLIT * TOTAL_REWARD) / total_weight_for_distribution
+            # keeper_delegators_reward_per_proposal = keeper_delgators_reward / no_proposals
             for proposal_id, in session.query(VoteCast.proposalId).filter(VoteCast.voter == keeper):
                 proposal_delegators = session.query(
                     VoteStat.delegator, VoteStat.balance, VoteStat.no_of_days
                 ).filter(and_(VoteStat.delegatee == keeper, VoteStat.proposalId == proposal_id)).all()
                 proposal_keeper_total_weight = sum(obj[1] * obj[2] for obj in proposal_delegators)
                 for delegator, balance, no_of_days in proposal_delegators:
+                    # self.balances[delegator] += (
+                    #     int(balance) * no_of_days * keeper_delegators_reward_per_proposal
+                    # ) / int(proposal_keeper_total_weight)
                     self.balances[delegator] += (
-                        int(balance) * no_of_days * keeper_delegators_reward_per_proposal
-                    ) / int(proposal_keeper_total_weight)
+                        int(balance) * no_of_days * no_proposals * USER_SPLIT * TOTAL_REWARD
+                    ) / (total_weight_for_distribution * no_proposals * int(proposal_keeper_total_weight))
 
     def fill_keeper_balances(self, keeper_vote_cast_data):
         total_keeper_reward = KEEPER_SPLIT * TOTAL_REWARD
-        total_weight = sum(2 ** obj[1]  for obj in keeper_vote_cast_data)
+        total_weight = sum(obj[1] for obj in keeper_vote_cast_data)
         for voter, no_of_proposals in keeper_vote_cast_data:
-            self.balances[voter] += ((2 ** no_of_proposals) * total_keeper_reward) / total_weight
+            self.balances[voter] += (no_of_proposals * total_keeper_reward) / total_weight
 
     @staticmethod
     def fetch_keeper_vote_cast_data(session):
         return session.query(
             VoteCast.voter, func.count(VoteCast.voter)
-        ).group_by(VoteCast.voter).order_by(func.count(VoteCast.voter).desc()).all()
+        ).filter(VoteCast.voter != CRYPTEX_TEAM_MULTISIG_ADDRESS, VoteCast.votes > 0).group_by(VoteCast.voter).order_by(func.count(VoteCast.voter).desc()).all()
